@@ -1,6 +1,7 @@
 package main
 
 import (
+	"URL_Shortener/auth"
 	"URL_Shortener/handlers"
 	"context"
 	"fmt"
@@ -92,8 +93,10 @@ func main() {
 	getAllKeys() // Fetch all Redis keys
 
 	handlers.InitHandlers(rdb)
-	http.HandleFunc("/shorten", handlers.ShortenHandler)
-	http.HandleFunc("/", handlers.RedirectHandler)
+
+	http.HandleFunc("/signup", handlers.SignupHandler)
+	http.HandleFunc("/login", handlers.LoginHandler)
+	http.HandleFunc("/shorten", auth.JWTAuthMiddleware(handlers.ShortenHandler))
 
 	fmt.Println("🚀 URL Shortener running on :8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))

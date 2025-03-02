@@ -1,8 +1,10 @@
 package handlers
 
 import (
+	"URL_Shortener/auth"
 	"URL_Shortener/utils"
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -20,6 +22,11 @@ func InitHandlers(redisClient *redis.Client) {
 
 // RedirectHandler: Redirects short URL and tracks clicks + IPs
 func RedirectHandler(w http.ResponseWriter, r *http.Request) {
+	utils.EnableCORS(w)
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
 	if rdb == nil {
 		http.Error(w, "Redis is not initialized", http.StatusInternalServerError)
 		log.Println("❌ Redis client is nil, cannot process request")
@@ -54,6 +61,11 @@ func RedirectHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func ShortenHandler(w http.ResponseWriter, r *http.Request) {
+	utils.EnableCORS(w)
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
 	if rdb == nil {
 		http.Error(w, "Redis is not initialized", http.StatusInternalServerError)
 		log.Println("❌ Redis client is nil, cannot process request")
@@ -82,4 +94,52 @@ func ShortenHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	fmt.Fprintf(w, "Short URL: http://localhost:8080/%s\n", shortKey)
+}
+
+func SignupHandler(w http.ResponseWriter, r *http.Request) {
+	utils.EnableCORS(w)
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	var user auth.User
+	err := json.NewDecoder(r.Body).Decode(&user)
+	if err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	err = auth.RegisterUser(rdb, user)
+	if err != nil {
+		http.Error(w, "Failed to register user", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusCreated)
+	w.Write([]byte("✅ User registered successfully"))
+}
+
+// LoginHandler: Authenticates a user and returns a JWT
+func LoginHandler(w http.ResponseWriter, r *http.Request) {
+	utils.EnableCORS(w)
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	
+	var user auth.User
+	err := json.NewDecoder(r.Body).Decode(&user)
+	if err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	token, err := auth.AuthenticateUser(rdb, user)
+	if err != nil {
+		http.Error(w, "Invalid credentials", http.StatusUnauthorized)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"token": token})
 }
