@@ -97,6 +97,7 @@ func main() {
 	http.HandleFunc("/signup", handlers.SignupHandler)
 	http.HandleFunc("/login", handlers.LoginHandler)
 	http.HandleFunc("/shorten", auth.JWTAuthMiddleware(handlers.ShortenHandler))
+	http.HandleFunc("/", handlers.RedirectHandler)
 
 	fmt.Println("🚀 URL Shortener running on :8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))

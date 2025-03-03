@@ -6,11 +6,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/redis/go-redis/v9"
 	"log"
 	"net/http"
-	"time"
-
-	"github.com/redis/go-redis/v9"
 )
 
 var rdb *redis.Client
@@ -27,6 +25,7 @@ func RedirectHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
+
 	if rdb == nil {
 		http.Error(w, "Redis is not initialized", http.StatusInternalServerError)
 		log.Println("❌ Redis client is nil, cannot process request")
@@ -34,8 +33,8 @@ func RedirectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	shortKey := r.URL.Path[1:]
+	longURL, err := rdb.HGet(ctx, "url:"+shortKey, "originalURL").Result()
 
-	longURL, err := rdb.Get(ctx, shortKey).Result()
 	if err == redis.Nil {
 		http.NotFound(w, r)
 		return
@@ -56,46 +55,52 @@ func RedirectHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Printf("❌ Failed to store IP for %s: %v", shortKey, err)
 	}
-
 	http.Redirect(w, r, longURL, http.StatusFound)
 }
 
 func ShortenHandler(w http.ResponseWriter, r *http.Request) {
-	utils.EnableCORS(w)
+	fmt.Printf(r.Method)
 	if r.Method == "OPTIONS" {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-	if rdb == nil {
-		http.Error(w, "Redis is not initialized", http.StatusInternalServerError)
-		log.Println("❌ Redis client is nil, cannot process request")
+	username := r.Header.Get("X-User")
+	if username == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
-	longURL := r.URL.Query().Get("url")
-	if longURL == "" {
-		http.Error(w, "Missing URL", http.StatusBadRequest)
+	// Extract URL and optional slug from query parameters
+	originalURL := r.URL.Query().Get("url")
+	shortKey := r.URL.Query().Get("slug") // Custom slug (if provided)
+
+	if originalURL == "" {
+		http.Error(w, "Missing URL parameter", http.StatusBadRequest)
 		return
 	}
-
-	shortKey := utils.GetShortCode()
-
-	customSlug := r.URL.Query().Get("slug")
-	if customSlug != "" {
-		shortKey = customSlug
+	if shortKey == "" {
+		shortKey = utils.GetShortCode() // Generates a 6-character short key
 	}
 
-	err := rdb.Set(ctx, shortKey, longURL, time.Hour*24*7).Err()
-	//works for a week
+	_, err := rdb.HSet(ctx, "url:"+shortKey, map[string]interface{}{
+		"originalURL": originalURL,
+		"creator":     username, // Store creator's username
+	}).Result()
 	if err != nil {
-		http.Error(w, "Failed to store URL in Redis", http.StatusInternalServerError)
-		log.Printf("❌ Redis SET error: %v", err)
+		http.Error(w, "Failed to create short URL", http.StatusInternalServerError)
 		return
 	}
 
-	fmt.Fprintf(w, "Short URL: http://localhost:8080/%s\n", shortKey)
-}
+	_, err = rdb.SAdd(ctx, "user:"+username+":urls", shortKey).Result()
+	if err != nil {
+		http.Error(w, "Failed to link URL to user", http.StatusInternalServerError)
+		return
+	}
 
+	response := fmt.Sprintf("Short URL created: http://localhost:8080/%s", shortKey)
+	w.WriteHeader(http.StatusCreated)
+	w.Write([]byte(response))
+}
 func SignupHandler(w http.ResponseWriter, r *http.Request) {
 	utils.EnableCORS(w)
 	if r.Method == "OPTIONS" {
@@ -126,7 +131,7 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-	
+
 	var user auth.User
 	err := json.NewDecoder(r.Body).Decode(&user)
 	if err != nil {

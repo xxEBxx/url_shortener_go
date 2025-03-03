@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>User Dashboard</title>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; margin: 50px; }
+        table { width: 80%; margin: auto; border-collapse: collapse; }
+        th, td { border: 1px solid #ccc; padding: 10px; }
+        button { padding: 8px; background-color: #007bff; color: white; border: none; cursor: pointer; }
+        button:hover { background-color: #0056b3; }
+    </style>
+</head>
+<body>
+
+<h2>Welcome, <span id="username"></span></h2>
+<button onclick="logout()">Logout</button>
+
+<h3>Your Shortened URLs</h3>
+<table>
+    <thead>
+    <tr>
+        <th>Short URL</th>
+        <th>Original URL</th>
+        <th>Clicks</th>
+        <th>Visitor IPs</th>
+    </tr>
+    </thead>
+    <tbody id="url-list"></tbody>
+</table>
+
+<h3>Create a New Short URL</h3>
+<form id="shorten-form">
+    <input type="text" id="original-url" placeholder="Enter original URL" required>
+    <input type="text" id="custom-slug" placeholder="Custom slug (optional)">
+    <button type="submit">Shorten</button>
+</form>
+
+<script>
+    document.getElementById("username").innerText = localStorage.getItem("username");
+
+    async function fetchURLs() {
+        const token = localStorage.getItem("jwt");
+        const response = await fetch("http://localhost:8080/user-urls", {
+            headers: { "Authorization": "Bearer " + token }
+        });
+
+        const urls = await response.json();
+        const urlList = document.getElementById("url-list");
+        urlList.innerHTML = "";
+
+        urls.forEach(url => {
+            urlList.innerHTML += `
+                    <tr>
+                        <td><a href="http://localhost:8080/${url.shortKey}" target="_blank">${url.shortKey}</a></td>
+                        <td>${url.originalURL}</td>
+                        <td>${url.clicks}</td>
+                        <td>${url.ips.join(", ")}</td>
+                    </tr>
+                `;
+        });
+    }
+
+    document.getElementById("shorten-form").addEventListener("submit", async function (event) {
+        event.preventDefault();
+        const token = localStorage.getItem("jwt");
+        const originalURL = document.getElementById("original-url").value;
+        const customSlug = document.getElementById("custom-slug").value;
+
+        var to_send="http://localhost:8080/shorten?url="+originalURL;
+        if(customSlug !== ""){
+            to_send += "&" + "slug="+customSlug;
+        }
+        console.log(to_send);
+        const response = await fetch(to_send, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": "Bearer " + token
+            },
+            body: JSON.stringify({ originalURL, slug: customSlug })
+        });
+
+        if (response.ok) {
+            alert("✅ URL Shortened Successfully!");
+            fetchURLs(); // Refresh list
+        } else {
+            alert("❌ Failed to shorten URL.");
+        }
+    });
+
+    function logout() {
+        localStorage.removeItem("jwt");
+        localStorage.removeItem("username");
+        window.location.href = "index.html";
+    }
+
+    fetchURLs(); // Load URLs on page load
+</script>
+
+</body>
+</html>

@@ -5,35 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>JWT Authentication</title>
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            text-align: center;
-            margin: 50px;
-        }
-        form {
-            max-width: 300px;
-            margin: auto;
-            padding: 20px;
-            border: 1px solid #ccc;
-            border-radius: 5px;
-        }
-        input {
-            width: 90%;
-            padding: 10px;
-            margin: 10px 0;
-            display: block;
-        }
-        button {
-            width: 100%;
-            padding: 10px;
-            background-color: #28a745;
-            color: white;
-            border: none;
-            cursor: pointer;
-        }
-        button:hover {
-            background-color: #218838;
-        }
+        body { font-family: Arial, sans-serif; text-align: center; margin: 50px; }
+        form { max-width: 300px; margin: auto; padding: 20px; border: 1px solid #ccc; border-radius: 5px; }
+        input { width: 90%; padding: 10px; margin: 10px 0; display: block; }
+        button { width: 100%; padding: 10px; background-color: #28a745; color: white; border: none; cursor: pointer; }
+        button:hover { background-color: #218838; }
     </style>
 </head>
 <body>
@@ -54,7 +30,46 @@
 
 <p id="message"></p>
 
-<script src="auth.js"></script>
+<script>
+    document.getElementById("login-form").addEventListener("submit", async function (event) {
+        event.preventDefault();
+        const username = document.getElementById("login-username").value;
+        const password = document.getElementById("login-password").value;
+
+        const response = await fetch("http://localhost:8080/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ username, password }),
+        });
+
+        const data = await response.json();
+        if (response.ok) {
+            localStorage.setItem("jwt", data.token);
+            localStorage.setItem("username", username);
+            window.location.href = "dashboard.html"; // Redirect to dashboard
+        } else {
+            document.getElementById("message").innerText = "❌ Login Failed!";
+        }
+    });
+
+    document.getElementById("signup-form").addEventListener("submit", async function (event) {
+        event.preventDefault();
+
+        const username = document.getElementById("signup-username").value;
+        const password = document.getElementById("signup-password").value;
+
+        const response = await fetch("http://localhost:8080/signup", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ username, password }),
+        });
+
+        const message = response.ok ? "✅ Sign Up Successful!" : "❌ Sign Up Failed!";
+        document.getElementById("message").innerText = message;
+    });
+
+
+</script>
 
 </body>
 </html>

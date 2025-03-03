@@ -1,13 +1,21 @@
 package auth
 
 import (
+	"URL_Shortener/utils"
 	"net/http"
 	"strings"
 )
 
 // JWTAuthMiddleware protects routes
 func JWTAuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
+
 	return func(w http.ResponseWriter, r *http.Request) {
+		utils.EnableCORS(w)
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {
 			http.Error(w, "Missing token", http.StatusUnauthorized)
