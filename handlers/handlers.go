@@ -5,6 +5,7 @@ import (
 	"URL_Shortener/utils"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/redis/go-redis/v9"
 	"log"
@@ -101,6 +102,7 @@ func ShortenHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusCreated)
 	w.Write([]byte(response))
 }
+
 func SignupHandler(w http.ResponseWriter, r *http.Request) {
 	utils.EnableCORS(w)
 	if r.Method == "OPTIONS" {
@@ -147,4 +149,98 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"token": token})
+}
+
+// URLData holds the data for each short URL entry.
+type URLData struct {
+	ShortKey    string   `json:"shortKey"`
+	OriginalURL string   `json:"originalURL"`
+	Clicks      int      `json:"clicks"`
+	IPs         []string `json:"ips"`
+}
+
+// Server holds shared components like the Redis client.
+type Server struct {
+	redisClient *redis.Client
+}
+
+// In this example, assume your JWT middleware adds user claims to the context.
+func GetUserURLsHandler(w http.ResponseWriter, r *http.Request) {
+
+	utils.EnableCORS(w)
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	ctx := context.Background()
+
+	// 1. Extract the username from your JWT claims.
+	//    (You'd adjust this based on how your middleware sets context.)
+	username := r.Header.Get("X-User")
+	if username == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	// 2. Determine the Redis set key that contains all the short URLs for this user.
+	userURLsKey := fmt.Sprintf("user:%s:urls", username)
+
+	// 3. Get all short keys for the user from Redis.
+	shortKeys, err := rdb.SMembers(ctx, userURLsKey).Result()
+	if err != nil {
+		http.Error(w, "Error fetching user URLs", http.StatusInternalServerError)
+		return
+	}
+
+	// 4. Gather URL data.
+	var results []URLData
+	for _, shortKey := range shortKeys {
+
+		// Retrieve the original URL (string key "url:<shortKey>")
+		urlKey := fmt.Sprintf("url:%s", shortKey)
+		originalURL, err := rdb.HGet(ctx, urlKey, "originalURL").Result()
+		if errors.Is(err, redis.Nil) {
+			// No data found for this shortKey; skip it
+			continue
+		} else if err != nil {
+			http.Error(w, "Error retrieving original URL", http.StatusInternalServerError)
+			return
+		}
+
+		clicksVal, err := rdb.HGet(ctx, "clicks", shortKey).Result()
+		clicks := 0
+
+		switch {
+		case err == redis.Nil:
+			// Not found => means no clicks yet, so clicks stays 0
+		case err != nil:
+			// Some unexpected error
+			http.Error(w, "Error retrieving clicks count", http.StatusInternalServerError)
+			return
+		default:
+			// Convert clicksVal to int
+			fmt.Sscanf(clicksVal, "%d", &clicks)
+		}
+
+		// Retrieve the IP addresses (set "ip:<shortKey>")
+		ipsKey := fmt.Sprintf("ip:%s", shortKey)
+		ipList, err := rdb.SMembers(ctx, ipsKey).Result()
+		if err != nil && err != redis.Nil {
+			http.Error(w, "Error retrieving IP addresses", http.StatusInternalServerError)
+			return
+		}
+
+		// Accumulate the data
+		results = append(results, URLData{
+			ShortKey:    shortKey,
+			OriginalURL: originalURL,
+			Clicks:      clicks,
+			IPs:         ipList,
+		})
+	}
+
+	// 5. Return the data as JSON
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(results)
 }

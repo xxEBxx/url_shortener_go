@@ -33,5 +33,6 @@ func JWTAuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
 		r.Header.Set("X-User", username)
 
 		next(w, r)
+
 	}
 }
